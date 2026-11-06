@@ -1,12 +1,15 @@
+import os
 import sqlite3
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 app = FastAPI(title="User Service", version="1.0.0")
+DATABASE_PATH = os.getenv("USERS_DATABASE_PATH", "users.db")
 
 # Inicialização do banco SQLite local
 def init_db():
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
@@ -32,7 +35,7 @@ class UserResponse(BaseModel):
 
 @app.post("/users", response_model=UserResponse, status_code=201)
 def create_user(user: UserCreate):
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     try:
         cursor.execute("INSERT INTO users (name, email) VALUES (?, ?)", (user.name, user.email))
@@ -46,7 +49,7 @@ def create_user(user: UserCreate):
 
 @app.get("/users/{user_id}", response_model=UserResponse)
 def get_user(user_id: int):
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT id, name, email FROM users WHERE id = ?", (user_id,))
     row = cursor.fetchone()

@@ -1,0 +1,11 @@
+.env
+.env.rpps
+__pycache__/
+*.py[cod]
+*.db
+.venv/
+.venv-*/
+venv/
+frontend/node_modules/
+frontend/dist/
+rpps_system/data/

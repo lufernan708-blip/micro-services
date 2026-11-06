@@ -1,0 +1,7 @@
+from pathlib import Path
+
+import pytest
+
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main(["-q", str(Path(__file__).parent)]))

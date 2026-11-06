@@ -1,0 +1,131 @@
+services:
+  rabbitmq:
+    image: rabbitmq:4-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:?Set RABBITMQ_DEFAULT_USER in .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:?Set RABBITMQ_DEFAULT_PASS in .env}
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  user-service:
+    build:
+      context: ./microservicos-fastapi
+    command: ["uvicorn", "user_service:app", "--host", "0.0.0.0", "--port", "8001"]
+    environment:
+      USERS_DATABASE_PATH: /data/users.db
+    volumes:
+      - users_data:/data
+    ports:
+      - "127.0.0.1:8001:8001"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/openapi.json')"
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  order-service:
+    build:
+      context: ./microservicos-fastapi
+    command: ["uvicorn", "order_service:app", "--host", "0.0.0.0", "--port", "8002"]
+    volumes:
+      - orders_data:/data
+    ports:
+      - "127.0.0.1:8002:8002"
+    environment:
+      USER_SERVICE_URL: http://user-service:8001
+      ORDERS_DATABASE_PATH: /data/orders.db
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:?Set RABBITMQ_DEFAULT_USER in .env}:${RABBITMQ_DEFAULT_PASS:?Set RABBITMQ_DEFAULT_PASS in .env}@rabbitmq:5672/
+    depends_on:
+      user-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/openapi.json')"
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  api-gateway:
+    build:
+      context: ./microservicos-fastapi
+    command: ["uvicorn", "api_gateway:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      USER_SERVICE_URL: http://user-service:8001
+      ORDER_SERVICE_URL: http://order-service:8002
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
+      LOGIN_USERNAME: ${LOGIN_USERNAME:?Set LOGIN_USERNAME in .env}
+      LOGIN_PASSWORD: ${LOGIN_PASSWORD:?Set LOGIN_PASSWORD in .env}
+    depends_on:
+      user-service:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/openapi.json')"
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+  notification-worker:
+    build:
+      context: ./microservicos-fastapi
+    command: ["python", "notification_service.py"]
+    environment:
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:?Set RABBITMQ_DEFAULT_USER in .env}:${RABBITMQ_DEFAULT_PASS:?Set RABBITMQ_DEFAULT_PASS in .env}@rabbitmq:5672/
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  test-suite:
+    build:
+      context: .
+      dockerfile: test/Dockerfile
+    profiles: ["test"]
+    environment:
+      TEST_LOAD_REQUESTS: ${TEST_LOAD_REQUESTS:-500}
+    command: ["pytest", "-q"]
+
+volumes:
+  users_data:
+  orders_data:
+  rabbitmq_data:

@@ -1,0 +1,129 @@
+services:
+  auth-service:
+    build: .
+    command: ["uvicorn", "auth_service:app", "--host", "0.0.0.0", "--port", "8001"]
+    environment:
+      AUTH_DB_PATH: /data/auth.db
+      RPPS_ADMIN_USERNAME: ${RPPS_ADMIN_USERNAME:?Configure .env.rpps}
+      RPPS_ADMIN_PASSWORD: ${RPPS_ADMIN_PASSWORD:?Configure .env.rpps}
+      RPPS_JWT_SECRET: ${RPPS_JWT_SECRET:?Configure .env.rpps}
+    volumes:
+      - auth_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+    networks: [rpps]
+
+  core-service:
+    build: .
+    command: ["uvicorn", "core_service:app", "--host", "0.0.0.0", "--port", "8002"]
+    environment:
+      RPPS_CORE_DB_PATH: /data/core.db
+    volumes:
+      - core_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+    networks: [rpps]
+
+  validation-service:
+    build: .
+    command: ["uvicorn", "validation_service:app", "--host", "0.0.0.0", "--port", "8003"]
+    environment:
+      RPPS_VALIDATION_DB_PATH: /data/validation.db
+    volumes:
+      - validation_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8003/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+    networks: [rpps]
+
+  analytics-service:
+    build: .
+    command: ["uvicorn", "analytics_service:app", "--host", "0.0.0.0", "--port", "8004"]
+    environment:
+      RPPS_ANALYTICS_DB_PATH: /data/analytics.db
+      RPPS_CORE_URL: http://core-service:8002
+      RPPS_VALIDATION_URL: http://validation-service:8003
+    volumes:
+      - analytics_data:/data
+    depends_on:
+      core-service:
+        condition: service_healthy
+      validation-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8004/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+    networks: [rpps]
+
+  api-gateway:
+    build: .
+    command: ["uvicorn", "api_gateway:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      RPPS_AUTH_URL: http://auth-service:8001
+      RPPS_CORE_URL: http://core-service:8002
+      RPPS_VALIDATION_URL: http://validation-service:8003
+      RPPS_ANALYTICS_URL: http://analytics-service:8004
+      RPPS_JWT_SECRET: ${RPPS_JWT_SECRET:?Configure .env.rpps}
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      core-service:
+        condition: service_healthy
+      validation-service:
+        condition: service_healthy
+      analytics-service:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+    networks: [rpps]
+
+  frontend:
+    build:
+      context: ../frontend
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks: [rpps]
+
+networks:
+  rpps:
+    name: rpps_internal
+
+volumes:
+  auth_data:
+  core_data:
+  validation_data:
+  analytics_data:

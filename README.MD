@@ -1,31 +1,28 @@
-# Microsserviços Didáticos com FastAPI
+# RPPS+ — Plataforma de Recenseamento Previdenciário
 
-Este projeto é uma implementação minimalista, prática e didática de uma **Arquitetura de Microsserviços** utilizando **Python** e **FastAPI**. O objetivo principal é demonstrar de forma simples como sistemas distribuídos se estruturam e se comunicam no mundo real.
+Este repositório contém uma demonstração de recenseamento RPPS composta por frontend React/Tailwind, API Gateway com JWT e microsserviços independentes de autenticação, cadastro, validação e analytics.
 
----
+## Executar
 
-## O Problema que Este Projeto Resolve
+Com Docker Compose disponível, na raiz:
 
-Em aplicações tradicionais (**Monolitos**), todas as regras de negócio (usuários, pedidos, pagamentos, produtos) vivem dentro de um único grande sistema e compartilham o mesmo banco de dados. Conforme o sistema cresce, isso traz grandes dores de cabeça:
-- **Acoplamento alto:** Mudar uma funcionalidade pode quebrar outra sem aviso.
-- **Escalabilidade difícil:** Se apenas o módulo de pedidos estiver sobrecarregado, você é obrigado a escalar o sistema inteiro.
-- **Impacto em falhas:** Se um erro corromper o banco ou travar a aplicação, todo o sistema cai junto.
+```bash
+./rpps_system/start-rpps.sh
+```
 
-### A Solução Implementada (Microsserviços)
-Este projeto resolve esses problemas dividindo a aplicação em **serviços independentes e especializados**:
-1. **Isolamento de Domínios:** Cada microsserviço cuida exclusivamente de uma responsabilidade (Usuários ou Pedidos).
-2. **Database per Service (Banco por Serviço):** Cada microsserviço possui o seu próprio banco de dados SQLite (`users.db` e `orders.db`). Nenhum serviço acessa diretamente o banco do outro.
-3. **Comunicação Controlada (API Gateway):** O cliente externo não sabe que existem vários serviços rodando; ele fala apenas com um ponto de entrada único (**API Gateway**).
-4. **Colaboração via HTTP:** Quando o Serviço de Pedidos precisa validar se um usuário existe antes de salvar uma compra, ele realiza uma requisição HTTP síncrona controlada para o Serviço de Usuários.
+O script cria `.env.rpps` localmente com credenciais aleatórias de desenvolvimento (arquivo ignorado pelo Git), inicia os serviços e verifica as URLs publicadas:
 
----
+- Frontend: `http://localhost:8080`
+- Gateway e documentação: `http://localhost:8000/docs`
 
-##  Estrutura de Diretórios
+Use o usuário `rpps.admin`; a senha local de demonstração é gerada em `.env.rpps`. Não use esses dados em produção. Para parar sem remover volumes:
 
-```text
-microservicos-fastapi/
-│
-├── api_gateway.py      # Porta 8000 (Roteador/Ponto de entrada)
-├── user_service.py     # Porta 8001 (Microsserviço de Usuários)
-├── order_service.py    # Porta 8002 (Microsserviço de Pedidos)
-└── requirements.txt    # Dependências do projeto
+```bash
+docker compose --env-file .env.rpps -f rpps_system/docker-compose.yml -p rpps down
+```
+
+## Arquitetura e segurança
+
+Auth, Core, Validation e Analytics têm bases SQLite próprias e não publicam portas no host. O Gateway é o ponto único de entrada; só ele valida JWT e repassa a identidade autenticada às chamadas internas. Dados pessoais no exemplo são fictícios e não devem ser usados em produção. SQLite, credenciais bootstrap e ausência de controles operacionais avançados tornam esta uma implementação didática, não uma instalação produtiva.
+
+Veja [rpps_system/README.md](./rpps_system/README.md) para detalhes dos serviços, fluxo, testes e recomendações de produção.
